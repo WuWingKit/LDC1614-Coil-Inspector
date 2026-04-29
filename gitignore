@@ -1,0 +1,79 @@
+# =============================================================
+# .gitignore for STM32 Keil MDK Project
+# LDC1614 Coil Assembly Inspection System
+# =============================================================
+
+# ---------------- Keil Build Output (OBJ/) -----------------
+# 编译产生的中间文件和固件，不需要提交
+OBJ/
+*.axf
+*.bin
+*.hex
+*.elf
+
+# Keil compiler intermediates
+*.o
+*.d
+*.crf
+*.dep
+*.lnp
+*.sct
+*.lst
+
+# Keil map and listing files (Listings/ 目录)
+Listings/
+*.map
+
+# Keil build log
+*.build_log.htm
+*.htm
+
+# ---------------- Keil IDE / User Settings ------------------
+# 用户个人工作区设置，各人本地不同，不提交
+*.uvguix.*          # GUI layout (window positions, etc.)
+*.uvoptx            # Debug/optmization options (可选：如需统一调试配置可取消此行)
+*.uvgui.*           # Legacy GUI layout
+
+# Keil debug configuration (contains local paths)
+DebugConfig/
+
+# JLink session files
+JLinkLog.txt
+*.jlink
+
+# ---------------- Windows system files ---------------------
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------------- macOS system files -----------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ---------------- Editor / IDE --------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------------- Temporary files -------------------------
+*.tmp
+*.bak
+*.orig
+
+# =============================================================
+# Files TO KEEP (source code, project config, docs)
+# 以下文件应当提交：
+#   USER/main.c
+#   USER/*.uvprojx          ← Keil 主工程文件（保留）
+#   USER/stm32f10x*.h / *.c
+#   HARDWARE/**/*.c / *.h
+#   SYSTEM/**/*.c / *.h
+#   CORE/**/*.c / *.h / *.s
+#   STM32F10x_FWLib/**
+#   README.md
+#   LICENSE
+#   .gitignore
+# =============================================================
