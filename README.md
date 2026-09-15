@@ -1,5 +1,7 @@
 # LDC1614 Coil Inspector
 
+![Physical prototype of the LDC1614 coil inspector](./assets/product-photo.jpg)
+
 [中文](./README.zh-CN.md) · [Demo video](./media/demonstration.mp4) · [Presentation](./presentation/project-presentation.pptx) · [Project proposal](./docs/project-proposal.docx)
 
 [![STM32F103](https://img.shields.io/badge/MCU-STM32F103RC-03234B?logo=stmicroelectronics)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103rc.html)
@@ -8,9 +10,7 @@
 [![Keil](https://img.shields.io/badge/IDE-Keil_MDK-394049)](https://www.keil.com/)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/Archive-CC_BY--NC--SA_4.0-lightgrey.svg)](./LICENSE-CONTENT.md)
 
-An STM32-based, non-contact inductive inspection device for judging whether a metal workpiece is positioned or tightened within a qualified range.
-
-![3D-printed enclosure design](./assets/enclosure-design.png)
+An STM32-based, non-contact inductive inspection device for judging whether a metal workpiece is positioned or tightened within a qualified range. The photograph above shows the completed prototype with its 3D-printed enclosure, LCD, control keys, sensing coil, and workpiece fixture.
 
 ## Project at a glance
 
@@ -37,6 +37,45 @@ The sensing coil and its capacitor form an LC resonant circuit. A nearby conduct
 
 The physical prototype combines purchased electronic/mechanical modules with a custom **3D-printed enclosure** containing the display area, measurement platform, buttons, and internal storage space.
 
+![3D-printed enclosure design](./assets/enclosure-design.png)
+
+## System architecture
+
+```text
+Metal target
+    ↓ changes coil inductance and resonant response
+LC sensing coil → LDC1614 channel 0
+                    ↓ 28-bit conversion result over software I²C
+                STM32F103RC
+                    ├─ 4-sample moving-average filter
+                    ├─ two-point calibration and 0–100% mapping
+                    ├─ PASS / FAR / NEAR decision
+                    ├─ LCD interface and progress bar
+                    └─ USART diagnostic output
+```
+
+### Firmware layers
+
+| Layer | Main paths | Responsibility |
+|---|---|---|
+| Application | `USER/main.c` | Operating modes, key events, calibration, filtering, decision logic, LCD pages, and serial diagnostics |
+| Sensor driver | `HARDWARE/LDC1614/` | Software I²C, register access, LDC1614 initialization, and channel conversion reads |
+| Human interface | `HARDWARE/LCD/`, `HARDWARE/KEY/`, `HARDWARE/LED/` | Local display, keys, and status indication |
+| Platform support | `SYSTEM/`, `STM32F10x_FWLIB/`, `CORE/` | Clock, delay, USART, CMSIS, startup, and STM32 Standard Peripheral Library |
+
+The main loop first scans the keys, then reads and filters the LDC1614 value. A small state machine selects the empty-calibration, qualified-reference calibration, waiting, or measurement page. Measurement mode runs only after both calibration bits are set.
+
+### Key firmware parameters
+
+| Parameter | Current value |
+|---|---:|
+| LDC1614 I²C address | `0x2A` |
+| Software I²C pins | `PB10` SCL, `PB11` SDA |
+| LDC shutdown pin | `PC13`, active low in the driver |
+| Moving-average window | 4 samples |
+| Display update period | 150 ms |
+| Acceptance window | 45–55% |
+
 ### Calibration and decision logic
 
 1. Record an empty-fixture reference.
@@ -62,19 +101,53 @@ These values are targets documented in the final presentation, not metrology cer
 
 ## Repository contents
 
-- `USER/` and `HARDWARE/`: STM32 application and peripheral drivers
+- `USER/Inductive distance measurement.uvprojx`: Keil MDK project entry point
+- `USER/main.c`: application state machine, filter, calibration, decision, and display logic
+- `HARDWARE/LDC1614/`: software I²C and LDC1614 register driver
+- `HARDWARE/LCD/`, `KEY/`, `LED/`: local interface drivers
+- `SYSTEM/`, `CORE/`, `STM32F10x_FWLIB/`: STM32 platform support and libraries
 - `assets/`: README illustrations exported from the final presentation
 - `docs/project-proposal.docx`: original project proposal
 - `presentation/project-presentation.pptx`: original final presentation
 - `media/demonstration.mp4`: prototype demonstration
 - `OBJ/`: historical build outputs retained from the original code archive
 
-## Build and use
+## Download, build, and use
 
-1. Open the Keil project under `USER/` in Keil MDK.
-2. Build with the STM32F10x Standard Peripheral Library configuration already included in the repository.
-3. Flash the STM32F103RC with an ST-Link.
-4. Power on, complete empty and qualified-reference calibration, then place the target on the inspection platform.
+### 1. Download the source
+
+```bash
+git clone https://github.com/WuWingKit/LDC1614-Coil-Inspector.git
+cd LDC1614-Coil-Inspector
+```
+
+Without Git, open the repository page, choose **Code → Download ZIP**, and extract the archive.
+
+### 2. Prepare the toolchain
+
+- Keil MDK 5 with an ARM Compiler version compatible with the existing project
+- ST-Link and its USB driver
+- STM32F103RC target board
+- LDC1614 board and LC sensing coil
+- LCD and keys wired according to the supplied firmware pin definitions
+
+The driver intentionally uses `PB10/PB11` for software I²C because `PB8/PB9` conflict with the LCD connections in this prototype. Check voltage, ground, SDA/SCL pull-ups, and the LDC1614 address before powering the system.
+
+### 3. Build and flash
+
+1. Open `USER/Inductive distance measurement.uvprojx` in Keil MDK.
+2. Select the existing target and run **Build** (`F7`).
+3. Connect ST-Link through SWD and run **Download** (`F8`).
+4. If the sensor startup page shows `FAIL`, inspect the I²C wiring, address selection, shutdown pin, and common ground.
+
+### 4. Calibrate and measure
+
+1. Start the empty calibration with no metal target on the fixture, then confirm the reading.
+2. Place the qualified reference workpiece at its required position and save the second point.
+3. Enter measurement mode only after the interface shows both calibration steps as complete.
+4. Place a workpiece on the fixture and read the percentage, raw value, progress bar, and `PASS`/`FAR`/`NEAR` result.
+
+Calibration values live in RAM and must be captured again after a reset. Use the serial output when checking unstable readings or unexpected classification.
 
 ## Current limitations
 
@@ -86,4 +159,3 @@ These values are targets documented in the final presentation, not metrology cer
 ## License
 
 Project-authored documentation, presentation, images, video, and hardware-design material are shared under **CC BY-NC-SA 4.0**; see [LICENSE-CONTENT.md](./LICENSE-CONTENT.md). Source and third-party vendor components retain the terms stated in their respective files.
-

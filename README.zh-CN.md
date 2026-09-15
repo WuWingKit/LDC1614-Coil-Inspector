@@ -1,5 +1,7 @@
 # 基于 LDC1614 的电感式工件合格性检测装置
 
+![LDC1614 电感检测装置实体成品](./assets/product-photo.jpg)
+
 [English](./README.md) · [演示视频](./media/demonstration.mp4) · [项目汇报](./presentation/project-presentation.pptx) · [项目方案](./docs/project-proposal.docx)
 
 [![STM32F103](https://img.shields.io/badge/MCU-STM32F103RC-03234B?logo=stmicroelectronics)](https://www.st.com/en/microcontrollers-microprocessors/stm32f103rc.html)
@@ -8,9 +10,7 @@
 [![Keil](https://img.shields.io/badge/IDE-Keil_MDK-394049)](https://www.keil.com/)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/Archive-CC_BY--NC--SA_4.0-lightgrey.svg)](./LICENSE-CONTENT.md)
 
-一套基于 STM32 的非接触式电感检测原型，用于判断金属工件的位置、装配或紧固状态是否落在合格区间。
-
-![3D 打印外壳设计](./assets/enclosure-design.png)
+一套基于 STM32 的非接触式电感检测原型，用于判断金属工件的位置、装配或紧固状态是否落在合格区间。上图为完成后的实体装置，可见 3D 打印外壳、LCD、操作按键、检测线圈及工件夹具。
 
 ## 项目基本信息
 
@@ -37,6 +37,45 @@
 
 实体原型由购买的电子/机械模块与自制 **3D 打印外壳**组合而成，外壳集成显示区、测试平台、操作按键和内部存放空间。
 
+![3D 打印外壳设计](./assets/enclosure-design.png)
+
+## 系统总体架构
+
+```text
+金属目标
+    ↓ 改变线圈电感与谐振响应
+LC 检测线圈 → LDC1614 通道 0
+                 ↓ 软件 I²C 读取 28 位转换结果
+             STM32F103RC
+                 ├─ 4 点滑动平均滤波
+                 ├─ 两点标定与 0–100% 映射
+                 ├─ PASS / FAR / NEAR 判定
+                 ├─ LCD 界面与进度条
+                 └─ USART 调试输出
+```
+
+### 固件分层
+
+| 层级 | 主要路径 | 作用 |
+|---|---|---|
+| 应用层 | `USER/main.c` | 工作模式、按键事件、标定、滤波、判定、LCD 页面及串口调试 |
+| 传感器驱动 | `HARDWARE/LDC1614/` | 软件 I²C、寄存器访问、LDC1614 初始化与通道数据读取 |
+| 人机交互 | `HARDWARE/LCD/`、`HARDWARE/KEY/`、`HARDWARE/LED/` | 显示、按键和状态指示 |
+| 平台支持 | `SYSTEM/`、`STM32F10x_FWLIB/`、`CORE/` | 时钟、延时、串口、CMSIS、启动文件与 STM32 标准外设库 |
+
+主循环先扫描按键，再读取并滤波 LDC1614 数据。小型状态机在空载标定、合格件标定、等待和测量页面之间切换；只有两个标定位都有效后才执行测量判定。
+
+### 关键固件参数
+
+| 参数 | 当前值 |
+|---|---:|
+| LDC1614 I²C 地址 | `0x2A` |
+| 软件 I²C 引脚 | `PB10` SCL、`PB11` SDA |
+| LDC 关断引脚 | `PC13`，驱动中低电平正常工作 |
+| 滑动平均窗口 | 4 点 |
+| 显示刷新周期 | 150 ms |
+| 合格区间 | 45–55% |
+
 ### 标定与判定逻辑
 
 1. 记录空载基准；
@@ -62,19 +101,53 @@
 
 ## 仓库内容
 
-- `USER/`、`HARDWARE/`：STM32 应用与外设驱动
+- `USER/Inductive distance measurement.uvprojx`：Keil MDK 工程入口
+- `USER/main.c`：应用状态机、滤波、标定、判定和显示逻辑
+- `HARDWARE/LDC1614/`：软件 I²C 与 LDC1614 寄存器驱动
+- `HARDWARE/LCD/`、`KEY/`、`LED/`：本地人机交互驱动
+- `SYSTEM/`、`CORE/`、`STM32F10x_FWLIB/`：STM32 平台支持与库文件
 - `assets/`：从终期 PPT 导出的 README 配图
 - `docs/project-proposal.docx`：原始项目方案
 - `presentation/project-presentation.pptx`：原始终期汇报
 - `media/demonstration.mp4`：实体原型演示
 - `OBJ/`：历史代码仓库中保留的构建产物
 
-## 编译与使用
+## 下载、编译与使用
 
-1. 使用 Keil MDK 打开 `USER/` 下的工程文件；
-2. 按仓库已有配置编译 STM32F10x 标准外设库工程；
-3. 使用 ST-Link 烧录 STM32F103RC；
-4. 上电后依次完成空载与合格参考件标定，再放置待测件。
+### 1. 下载源码
+
+```bash
+git clone https://github.com/WuWingKit/LDC1614-Coil-Inspector.git
+cd LDC1614-Coil-Inspector
+```
+
+没有安装 Git 时，可在仓库页面选择 **Code → Download ZIP**，然后解压。
+
+### 2. 准备环境
+
+- Keil MDK 5，以及与现有工程兼容的 ARM Compiler；
+- ST-Link 及其 USB 驱动；
+- STM32F103RC 开发板；
+- LDC1614 模块和 LC 检测线圈；
+- 按固件引脚定义连接的 LCD 与按键。
+
+本项目特意把软件 I²C 设置为 `PB10/PB11`，因为原 `PB8/PB9` 与 LCD 接线冲突。上电前应检查供电电压、共地、SDA/SCL 上拉电阻以及 LDC1614 地址选择。
+
+### 3. 编译与烧录
+
+1. 使用 Keil MDK 打开 `USER/Inductive distance measurement.uvprojx`；
+2. 选择工程已有 Target，执行 **Build**（`F7`）；
+3. 通过 SWD 连接 ST-Link，执行 **Download**（`F8`）；
+4. 如果传感器启动界面显示 `FAIL`，依次检查 I²C 接线、地址选择、关断引脚和共地。
+
+### 4. 标定与检测
+
+1. 测试平台上不放金属件，进入空载标定并确认读数；
+2. 将合格参考件放在规定位置，保存第二个标定点；
+3. 界面确认两项标定都完成后进入测量模式；
+4. 放置待测件，查看相对百分比、原始值、进度条及 `PASS`/`FAR`/`NEAR` 结果。
+
+标定值保存在 RAM 中，系统复位后需要重新采集。遇到读数不稳或判定异常时，可结合串口输出排查。
 
 ## 当前限制
 
@@ -86,4 +159,3 @@
 ## 协议
 
 项目原创文档、汇报、图片、视频和硬件设计资料采用 **CC BY-NC-SA 4.0**；详见 [LICENSE-CONTENT.md](./LICENSE-CONTENT.md)。源码及第三方厂商组件仍遵循各自文件中注明的许可条款。
-
